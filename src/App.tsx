@@ -32,7 +32,7 @@ const App = () => {
     <KeyboardControls map={keyMap}>
       <Canvas>
         <Suspense>
-          <Physics debug>
+          <Physics numSolverIterations={20}>
             <PerspectiveCamera
               ref={camRef}
               makeDefault

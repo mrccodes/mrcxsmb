@@ -10,21 +10,24 @@ interface PlayerBallProps {
     camRef: RefObject<THREE.PerspectiveCamera | null>;
 }
 
-const IMPULSE_FORCE = 0.01;
+const IMPULSE_FORCE = 0.001;
 const MAX_SPEED = 25;
 const YAW_SPEED = 0.04;
-const CAM_BACK = 14;
-const CAM_HEIGHT = 7;
+const CAM_BACK = 1.25;
+const CAM_HEIGHT = 0.5;
 
 const PlayerBall = ({ camRef }: PlayerBallProps) => {
     const rigidRef = useRef<RapierRigidBody>(null);
+    const meshRef = useRef<THREE.Mesh>(null);
     const yaw = useRef(Math.PI);
     const hasLanded = useRef(false);
-    const { ballScale } = useControls({ ballScale: 0.3 });
+    const controlsActive = useRef(false);
+    const _worldPos = useRef(new THREE.Vector3());
+    const { ballScale } = useControls({ ballScale: 0.1 });
     const [, getKeys] = useKeyboardControls<Controls>();
 
     useFrame(() => {
-        if (!rigidRef.current || !camRef.current) return;
+        if (!rigidRef.current || !camRef.current || !controlsActive.current) return;
 
         const { forward, back, left, right } = getKeys();
 
@@ -55,17 +58,20 @@ const PlayerBall = ({ camRef }: PlayerBallProps) => {
             );
         }
 
-        // Only start trailing camera once ball has landed
-        if (!hasLanded.current) return;
+        if (!controlsActive.current || !meshRef.current) return;
 
-        const pos = rigidRef.current.translation();
+        // Use the mesh's interpolated world position — r3r smooths this between
+        // physics steps, unlike rigidRef.translation() which is raw/stepped
+        meshRef.current.getWorldPosition(_worldPos.current);
+
         const targetCamPos = new THREE.Vector3(
-            pos.x - Math.sin(yaw.current) * CAM_BACK,
-            pos.y + CAM_HEIGHT,
-            pos.z - Math.cos(yaw.current) * CAM_BACK
+            _worldPos.current.x - Math.sin(yaw.current) * CAM_BACK,
+            _worldPos.current.y + CAM_HEIGHT,
+            _worldPos.current.z - Math.cos(yaw.current) * CAM_BACK
         );
-        camRef.current.position.lerp(targetCamPos, 0.1);
-        camRef.current.lookAt(pos.x, pos.y, pos.z);
+        camRef.current.position.copy(targetCamPos);
+        camRef.current.lookAt(_worldPos.current.x, _worldPos.current.y * 1.75, _worldPos.current.z);
+
     });
 
     return (
@@ -73,17 +79,21 @@ const PlayerBall = ({ camRef }: PlayerBallProps) => {
             ref={rigidRef}
             position={[0, 5, 11.5]}
             colliders="ball"
-            friction={1.8}
-            restitution={0.1}
+            ccd={true}
+            friction={1}
+            restitution={0}
             linearDamping={0.4}
-            angularDamping={0.6}
-            onCollisionEnter={() => { hasLanded.current = true; }}
+            angularDamping={1.5}
+            onCollisionEnter={() => {
+                hasLanded.current = true;
+                setTimeout(() => { controlsActive.current = true; }, 750);
+            }}
         >
-            <mesh scale={ballScale}>
-                <sphereGeometry args={[1, 64, 64]} />
+            <mesh ref={meshRef} scale={ballScale}>
+                <sphereGeometry args={[1, 128, 128]} />
                 <MeshTransmissionMaterial
                     backside
-                    samples={16}
+                    samples={32}
                     thickness={0.8}
                     roughness={0}
                     transmission={1}
